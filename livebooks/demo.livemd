@@ -1,0 +1,140 @@
+# Isabelle in Livebook
+
+```elixir
+Mix.install([
+  # Outside this repository: {:kino_isabelle, "~> 0.1.0-alpha.1"}
+  {:kino_isabelle, path: Path.expand("..", __DIR__)}
+])
+```
+
+## Introduction
+
+This notebook shows the **Isabelle theory** smart cell of `kino_isabelle`. It needs a local Isabelle installation: `isabelle` on `PATH`, or `ISABELLE_TOOL` set to the executable. Tested with Isabelle2025-2.
+
+An Isabelle cell has an editor for theory text and a toolbar. Nothing is checked while you type: Isabelle runs when you press **Check** or evaluate the cell. The first check starts an Isabelle server and the HOL session, which takes a few seconds; later checks reuse them. Both are stopped with the runtime.
+
+## A first theory
+
+The cell below generates the theory header from its toolbar: theory `Basics`, importing `Main`. Evaluating it binds the result to the variable in **Assign to**, here `basics`. Press **Check**, then move the cursor through the text. The panel under the editor shows the output of the command under the cursor: on `value` it is `"55" :: "nat"`, on `thm` the proved statement.
+
+Symbols are stored as `\<Rightarrow>` and displayed as `⇒`. To enter one, type `\Rightarrow`, `\<Righ` or an abbreviation such as `=>`, and pick the symbol from the completion list.
+
+<!-- livebook:{"attrs":"eyJoZWFkZXJfbW9kZSI6ImF1dG8iLCJpbXBvcnRzIjpbIk1haW4iXSwic2Vzc2lvbiI6IkhPTCIsInRleHQiOiJzZWN0aW9uIFxcPG9wZW4+U3VtcyBvZiBuYXR1cmFsIG51bWJlcnNcXDxjbG9zZT5cblxuZnVuIHN1bV90byA6OiBcIm5hdCBcXDxSaWdodGFycm93PiBuYXRcIiB3aGVyZVxuICBcInN1bV90byAwID0gMFwiXG58IFwic3VtX3RvIChTdWMgbikgPSBTdWMgbiArIHN1bV90byBuXCJcblxudmFsdWUgXCJzdW1fdG8gMTBcIlxuXG5sZW1tYSBzdW1fdG9fY2xvc2VkOiBcIjIgKiBzdW1fdG8gbiA9IG4gKiAobiArIDEpXCJcbiAgYnkgKGluZHVjdGlvbiBuKSBhdXRvXG5cbnRobSBzdW1fdG9fY2xvc2VkXG4iLCJ0aGVvcnkiOiJCYXNpY3MiLCJ2YXJpYWJsZSI6ImJhc2ljcyJ9","chunks":null,"kind":"Elixir.KinoIsabelle.Cell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, basics} =
+  KinoIsabelle.check(
+    ~S"""
+    section \<open>Sums of natural numbers\<close>
+
+    fun sum_to :: "nat \<Rightarrow> nat" where
+      "sum_to 0 = 0"
+    | "sum_to (Suc n) = Suc n + sum_to n"
+
+    value "sum_to 10"
+
+    lemma sum_to_closed: "2 * sum_to n = n * (n + 1)"
+      by (induction n) auto
+
+    thm sum_to_closed
+    """,
+    session: "HOL",
+    theory: "Basics",
+    imports: ["Main"]
+  )
+
+basics
+```
+
+## Errors and counterexamples
+
+This cell imports `Basics`, the theory of the cell above. All cells of a runtime write their theories to one directory, so a cell can import any theory that was checked before. Check the cell above first.
+
+`sum_to_bound` is false. With the cursor on `nitpick`, the panel shows the counterexample Nitpick found. The proof after it fails: the error is underlined and shown in the panel when the cursor is on `by`. An error does not stop Isabelle; `sum_to_mono` is still checked.
+
+<!-- livebook:{"attrs":"eyJoZWFkZXJfbW9kZSI6ImF1dG8iLCJpbXBvcnRzIjpbIkJhc2ljcyJdLCJzZXNzaW9uIjoiSE9MIiwidGV4dCI6ImxlbW1hIHN1bV90b19ib3VuZDogXCJzdW1fdG8gbiBcXDxsZT4gblwiXG4gIG5pdHBpY2tcbiAgYnkgKGluZHVjdGlvbiBuKSBhdXRvXG5cbmxlbW1hIHN1bV90b19tb25vOiBcIm0gXFw8bGU+IG4gXFw8TG9uZ3JpZ2h0YXJyb3c+IHN1bV90byBtIFxcPGxlPiBzdW1fdG8gblwiXG4gIGJ5IChpbmR1Y3Rpb24gbikgKGF1dG8gc2ltcDogbGVfU3VjX2VxKVxuIiwidGhlb3J5IjoiTWlzdGFrZXMiLCJ2YXJpYWJsZSI6Im1pc3Rha2VzIn0","chunks":null,"kind":"Elixir.KinoIsabelle.Cell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, mistakes} =
+  KinoIsabelle.check(
+    ~S"""
+    lemma sum_to_bound: "sum_to n \<le> n"
+      nitpick
+      by (induction n) auto
+
+    lemma sum_to_mono: "m \<le> n \<Longrightarrow> sum_to m \<le> sum_to n"
+      by (induction n) (auto simp: le_Suc_eq)
+    """,
+    session: "HOL",
+    theory: "Mistakes",
+    imports: ["Basics"]
+  )
+
+mistakes
+```
+
+## A complete theory
+
+With **Header** set to *in text*, the cell holds a complete theory, from `theory … imports … begin` to `end`. The theory name is taken from the text.
+
+<!-- livebook:{"attrs":"eyJoZWFkZXJfbW9kZSI6Im1hbnVhbCIsImltcG9ydHMiOlsiTWFpbiJdLCJzZXNzaW9uIjoiSE9MIiwidGV4dCI6InRoZW9yeSBMaXN0c1xuICBpbXBvcnRzIE1haW5cbmJlZ2luXG5cbmZ1biBpdHJldiA6OiBcIidhIGxpc3QgXFw8UmlnaHRhcnJvdz4gJ2EgbGlzdCBcXDxSaWdodGFycm93PiAnYSBsaXN0XCIgd2hlcmVcbiAgXCJpdHJldiBbXSB5cyA9IHlzXCJcbnwgXCJpdHJldiAoeCAjIHhzKSB5cyA9IGl0cmV2IHhzICh4ICMgeXMpXCJcblxubGVtbWEgaXRyZXZfcmV2OiBcIml0cmV2IHhzIHlzID0gcmV2IHhzIEAgeXNcIlxuICBieSAoaW5kdWN0aW9uIHhzIGFyYml0cmFyeTogeXMpIGF1dG9cblxubGVtbWEgXCJcXDxmb3JhbGw+eHMuIGl0cmV2IHhzIFtdID0gcmV2IHhzXCJcbiAgYnkgKHNpbXAgYWRkOiBpdHJldl9yZXYpXG5cbmVuZFxuIiwidGhlb3J5IjoiU2NyYXRjaCIsInZhcmlhYmxlIjoibGlzdHMifQ","chunks":null,"kind":"Elixir.KinoIsabelle.Cell","livebook_object":"smart_cell"} -->
+
+```elixir
+{:ok, lists} =
+  KinoIsabelle.check(
+    ~S"""
+    theory Lists
+      imports Main
+    begin
+
+    fun itrev :: "'a list \<Rightarrow> 'a list \<Rightarrow> 'a list" where
+      "itrev [] ys = ys"
+    | "itrev (x # xs) ys = itrev xs (x # ys)"
+
+    lemma itrev_rev: "itrev xs ys = rev xs @ ys"
+      by (induction xs arbitrary: ys) auto
+
+    lemma "\<forall>xs. itrev xs [] = rev xs"
+      by (simp add: itrev_rev)
+
+    end
+    """,
+    session: "HOL",
+    header_mode: :manual
+  )
+
+lists
+```
+
+## Results in Elixir
+
+Evaluating an Isabelle cell returns a `KinoIsabelle.Result`, rendered as tabs: a summary, all messages grouped by command, the errors only, and Isabelle's raw answer. The cells above bound theirs to `basics`, `mistakes` and `lists`:
+
+```elixir
+{basics.status, mistakes.status, lists.status}
+```
+
+`KinoIsabelle.check/2` does the same from Elixir code:
+
+```elixir
+{:ok, result} =
+  KinoIsabelle.check(
+    ~S"""
+    lemma "rev (rev xs) = xs" by simp
+    lemma "rev xs = xs" by simp
+    """,
+    theory: "From_Elixir"
+  )
+
+result.status
+```
+
+Each message has a kind (`:error`, `:warning` or `:writeln`), its text, and its range in the checked text as `from` and `to`, counted in UTF-16 code units like the editor does.
+
+```elixir
+for message <- result.messages, message.kind == :error, do: message.text
+```
+
+```elixir
+result
+```

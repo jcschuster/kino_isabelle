@@ -3,9 +3,10 @@ defmodule KinoIsabelle.Session do
   The runtime's Isabelle server and its logic sessions.
 
   The server is started on the first check and each logic session (`"HOL"`, …)
-  on the first check that names it. Both live until the runtime stops; the
-  server is shut down in `terminate/2`. If the connection dies, this process
-  exits and its supervisor restarts it, so the next check starts afresh.
+  on the first check that names it. Both live as long as this process: a
+  watchdog kills the server when this process or the whole VM exits. If the
+  connection dies, this process exits and its supervisor restarts it, so the
+  next check starts afresh.
 
   The last result per theory file is cached and returned while the source and
   logic session are unchanged.
@@ -15,6 +16,8 @@ defmodule KinoIsabelle.Session do
 
   alias IsabelleClient.Shared
   alias KinoIsabelle.Theory
+
+  @server_timeout 60_000
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
@@ -83,12 +86,9 @@ defmodule KinoIsabelle.Session do
   def handle_info({:EXIT, client, reason}, %{client: client} = state),
     do: {:stop, reason, %{state | client: nil}}
 
-  # Exit of a client whose start failed; the error was already returned.
+  # Exit of a client whose start failed, or of a closed port.
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
-
-  @impl true
-  def terminate(_reason, %{client: nil}), do: :ok
-  def terminate(_reason, %{client: client}), do: Shared.close(client)
+  def handle_info({_port, :closed}, state), do: {:noreply, state}
 
   defp ensure_session(%{sessions: sessions} = state, logic) when is_map_key(sessions, logic),
     do: {:ok, state}
@@ -108,12 +108,74 @@ defmodule KinoIsabelle.Session do
     end
   end
 
+  # The server name must be unique across VMs: `isabelle server -n` joins a
+  # running server of the same name.
   defp ensure_client(%{client: nil} = state) do
-    case Shared.start_link([]) do
-      {:ok, client} -> {:ok, %{state | client: client}}
+    name = "kino_isabelle_#{System.pid()}_#{System.unique_integer([:positive])}"
+
+    with {:ok, isabelle} <- IsabelleClient.Server.executable() do
+      watchdog = watchdog(isabelle, name)
+
+      with {:ok, info} <- start_server(isabelle, name),
+           {:ok, client} <-
+             Shared.start_link(password: info.password, host: info.host, port: info.port) do
+        {:ok, %{state | client: client}}
+      else
+        {:error, reason} ->
+          Port.close(watchdog)
+          {:error, reason, state}
+      end
+    else
       {:error, reason} -> {:error, reason, state}
     end
   end
 
   defp ensure_client(state), do: {:ok, state}
+
+  # Instead of IsabelleClient.Server.start/2, which drops the server's stderr
+  # and raises when the server exits before it closes the port.
+  defp start_server(isabelle, name) do
+    port =
+      Port.open({:spawn_executable, isabelle}, [
+        :binary,
+        :exit_status,
+        :stderr_to_stdout,
+        args: ["server", "-n", name, "-p", "0"]
+      ])
+
+    await_server(port, "")
+  end
+
+  defp await_server(port, output) do
+    receive do
+      {^port, {:data, data}} ->
+        output = output <> data
+
+        case IsabelleClient.Server.parse_info(output) do
+          [info] ->
+            # Unlike Port.close/1, does not raise if the server already exited.
+            send(port, {self(), :close})
+            {:ok, info}
+
+          [] ->
+            await_server(port, output)
+        end
+
+      {^port, {:exit_status, status}} ->
+        {:error, {:server_failed, status, String.trim(output)}}
+    after
+      @server_timeout ->
+        send(port, {self(), :close})
+        {:error, {:server_timeout, String.trim(output)}}
+    end
+  end
+
+  # Livebook halts a runtime without stopping applications, so cleanup cannot
+  # rely on terminate/2. The port's stdin closes when its owner or the VM
+  # exits; `read` then returns and the server is killed.
+  defp watchdog(isabelle, name) do
+    Port.open({:spawn_executable, "/bin/sh"},
+      args: ["-c", ~s(read _; exec "$0" server -n "$1" -x >/dev/null 2>&1), isabelle, name]
+    )
+  end
 end

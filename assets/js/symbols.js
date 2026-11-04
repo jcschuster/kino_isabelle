@@ -2,7 +2,7 @@
 // \name, \<name or an abbreviation such as ==>.
 
 import { Decoration, EditorView, MatchDecorator, ViewPlugin, WidgetType } from "@codemirror/view";
-import table from "../../priv/symbols.json";
+import table from "../../priv/symbols.json" with { type: "json" };
 
 export const symbols = table.map(([name, code, abbrevs]) => ({
   name,

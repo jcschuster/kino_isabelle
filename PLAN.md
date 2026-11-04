@@ -80,38 +80,45 @@ Keyword list generated from Isabelle's keyword table for the default session (sa
 
 Legend: `[x]` done and verified, `[~]` written but not verified, `[ ]` not started.
 
-### Open questions (smoke-tested against Isabelle2025-2, `isabelle_elixir` 0.4.1)
+### Open questions (tested against Isabelle2025-2, `isabelle_elixir` 0.4.1)
 
 - [x] Library version: using `~> 0.4` instead of 0.3 (0.4.0 fixes reply desync after timeouts in `Shared`; needs Elixir 1.20, which the project already requires). Entry point is `IsabelleClient.Shared.use_theories(pid, args)`; `unicode_symbols: true` works. `check_limit` not tested.
 - [x] Positions: `offset` and `end_offset` are 1-based symbol indices into the whole file, `end_offset` exclusive; `line` is 1-based. Some messages have `end_offset == offset` (e.g. "Malformed command syntax") or no `end_offset` (header errors); both are widened to one symbol.
-- [x] Input encoding: the server accepts raw UTF-8 (`∀`) as well as `\<forall>`, so the text is written as is. Assumed: one code point = one symbol. Not verified for astral-plane characters (`𝔄` checks fine, but its offsets were not inspected).
-- [x] Outputs: `thm`, `value`, `term`, `nitpick`, `try0` all report `writeln` messages with positions. `sledgehammer` not tested.
+- [x] Symbols are delimited as by Isabelle's `Symbol.Matcher`: one code point (also outside the BMP, e.g. emoji), `\r\n` as one symbol, `\<name>` also when malformed (`\<abc`). Checked against real offsets for emoji, combining marks, CJK, fraktur, named/control symbols, CRLF, CR, tab/form feed and a malformed symbol; these are the fixtures in `positions_test.exs`.
+- [x] Input encoding: the server accepts raw UTF-8 (`∀`) as well as `\<forall>`, so the text is written as is.
+- [x] Outputs: `thm`, `value`, `term`, `nitpick`, `try0` all report `writeln` messages with positions, on the command keyword. `sledgehammer` not tested.
 - [x] Re-running an unchanged theory returns the same messages, so the cache is a pure optimisation.
 - [x] Header errors (bad theory name, missing import, no header) arrive as `{:error, %Task{status: :failed}}` whose message is YXML with the position in a `position` element. `Messages` decodes this.
-- [x] Unknown logic: `session_start` fails after about 1 s with "Undefined session(s)".
-- [~] Server lifecycle: `Session.terminate/2` closes the `Shared` client, which kills the server. Not verified on Livebook runtime reconnect or cell deletion.
+- [x] Unknown logic: `session_start` fails after about 1 s with "Undefined session(s)". A logic without a heap is built by `session_start` first.
+- [x] Server start: `Session` runs `isabelle server` itself and connects `Shared` to it. `IsabelleClient.Server.start/2` drops the server's stderr and raises `badarg` from `Port.close` when the server exits early, so a failing start showed only `{:badarg, …}` (reported from a Livebook outside this container; cause not known yet). Now the error carries Isabelle's output.
+- [x] Server lifecycle: Livebook's standalone runtime ends with `System.halt()` (Livebook 0.19.10, `runtime/standalone.ex`), so `terminate/2` never runs. `Session` instead owns a watchdog port (`/bin/sh`, waits for stdin EOF, then `isabelle server -x`). Verified: no server left after `System.halt()`, `System.stop()`, killing `Session`, or killing the client (Session restarts, next check starts a new server). Deleting a cell does not stop the server; it belongs to the runtime. Server names include the OS pid, since `isabelle server -n` joins a running server of the same name.
 
 ### Milestones
 
-1. [x] `KinoIsabelle.Session`, `KinoIsabelle.Theory`, `KinoIsabelle.check/2`, `KinoIsabelle.Output` (Summary / Messages / Errors / Raw tabs via `Kino.Render` on `KinoIsabelle.Result`). `check/2` verified from `mix run`; the tabs were not rendered in Livebook.
-2. [~] Smart cell `KinoIsabelle.Cell` with CodeMirror 6 (`assets/`, built into `lib/assets/cell/build`). Bundle builds and Elixir compiles without warnings. Not yet opened in Livebook.
+1. [x] `KinoIsabelle.Session`, `KinoIsabelle.Theory`, `KinoIsabelle.check/2`, `KinoIsabelle.Output` (Summary / Messages / Errors / Raw tabs via `Kino.Render` on `KinoIsabelle.Result`). Tabs render to Livebook output maps; not looked at in Livebook.
+2. [~] Smart cell `KinoIsabelle.Cell` with CodeMirror 6 (`assets/`, built into `lib/assets/cell/build`).
    - [x] Keyword source: `mix kino_isabelle.gen_syntax [LOGIC]` writes `priv/keywords.json` (same Scala query as the Isabelle/VSCode grammar, via `isabelle scala`) and `priv/symbols.json` (from `etc/symbols`).
-   - [~] Outer-syntax `StreamLanguage` (`assets/js/isabelle.js`).
-   - [~] Toolbar: Check button, session / header mode / theory / imports fields, status indicator.
-3. [~] Position mapping (`KinoIsabelle.Positions`, to UTF-16 offsets for CodeMirror) and lint diagnostics. Results arriving after further edits are mapped onto the current text by a prefix/suffix diff.
-4. [~] Command spans and output panel. Elixir: `KinoIsabelle.Syntax` + `Messages.bucket/2`; JS: `commandSpan` over the syntax tree. The two scanners must stay in sync.
-5. [~] Symbol display (replacing decorations, atomic ranges) and completion for `\name`, `\<name` and abbreviations of two or more characters.
-6. [ ] Tests: none written yet. Planned: `Positions` (symbols, header shift, astral characters), `Syntax`/`Messages.bucket`, YXML decoding, `Cell.to_source` round trip (`~S` heredoc, text containing `"""`), and an integration test tagged `:isabelle` for the local server.
+   - [x] Outer-syntax `StreamLanguage` (`assets/js/isabelle.js`), tested in Node.
+   - [x] Cell process: attrs, `to_source`, Check event, evaluated result to editor, reconnect payload (`Kino.Test`).
+   - [~] Toolbar and editor UI: checked in jsdom only (Check button, status, field sync, header-mode toggle, error payload, reconnect). Layout, styling and Livebook's real `ctx` not checked.
+3. [x] Position mapping (`KinoIsabelle.Positions`, to UTF-16 offsets for CodeMirror) and lint diagnostics (jsdom). Results arriving after further edits are mapped onto the current text by a prefix/suffix diff (jsdom).
+4. [x] Command spans and output panel. Elixir `KinoIsabelle.Syntax` and JS `commandSpan` are tested against the same fixture (`test/fixtures/commands.*`). Panel per cursor position checked in jsdom.
+5. [~] Symbol display (replacing decorations, atomic ranges) and completion for `\name`, `\<name` and abbreviations of two or more characters. Completion tested in Node; display renders `∀` in jsdom; cursor movement over symbols not checked.
+6. [x] Tests: `mix test` (37 tests; the 5 in `kino_isabelle_test.exs` are tagged `:isabelle` and run when an `isabelle` executable is found) and `npm test` in `assets/` (7 tests).
 
 ### Next steps
 
-- [ ] Find the stall: one `mix run` script calling `check/2` several times (symbols, cache hit, manual header, bad import, unknown logic) did not return within 10 minutes. Each case returned promptly when run on its own (unknown logic in ~1 s), so the cause is still unknown. Possibly sequencing in `Session` or `Shared`.
-- [ ] Open the cell in Livebook: editor, Check button, lint, panel, symbol display, completion, re-connect with a cached result.
-- [ ] Write the tests from milestone 6.
-- [ ] README: replace the `mix new` stub (usage, `ISABELLE_TOOL`, rebuilding assets with `npm run build` in `assets/`).
+- [x] The stall: not a hang in the check path. A server outlived the `mix run` VM and held the inherited stderr pipe open, so `| tail` never finished. Fixed by the watchdog above.
+- [x] Demo notebook `livebooks/demo.livemd`: Livebook 0.19.10 imports it without warnings and re-exports it unchanged; all its cells evaluate as described (outside Livebook, via `Mix.install` with the path dependency).
+- [x] Opened in a browser by the user (2026-11-04): looks good. Not checked in detail: dark theme, keyboard handling, completion popup, cursor movement over symbol widgets.
+- [x] Result variable: "Assign to" field (attr `variable`); new cells default to `result`, `result2`, … via `Kino.SmartCell.prefixed_var_name/2`. Invalid names (Kino's check plus `nil`/`true`/`false` and a leading `_`) are rejected and the field is reset.
+- [x] README.
+- [x] Packaging for 0.1.0-alpha.1: MIT license, Hex metadata, ExDoc (README, demo, changelog), bundled npm licenses in `lib/assets/cell/build/THIRD_PARTY_LICENSES.txt`. The built package was installed from its unpacked files and ran the demo. Not published.
 
 ### Deviations from the plan, to decide
 
 - [ ] Theory directory: all cells of a runtime share one directory (`$TMP/kino_isabelle_<os pid>`) so that cells can import each other, instead of one directory per cell. Two cells with the same theory name overwrite each other's file.
 - [ ] The Check button checks in the cell process and pushes the result to the editor; it does not trigger cell evaluation (the Kino smart-cell API has no call for that). Cell evaluation runs `check/2` itself and reuses the cached result when the text is unchanged.
 - [ ] Cache key is `{logic, theory file}` and stores the full source, not a hash.
+- [ ] The theory name from the toolbar is not validated; Isabelle reports bad names, but a name like `../x` writes outside the theory directory.
+- [ ] Server cleanup needs `/bin/sh`, so Windows is not supported.

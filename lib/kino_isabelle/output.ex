@@ -53,8 +53,8 @@ defmodule KinoIsabelle.Output do
     """
     **#{result.theory}**: #{status}#{progress}
 
-    #{counts[:error] || 0} errors, #{counts[:warning] || 0} warnings, \
-    #{counts[:writeln] || 0} other messages
+    Errors: #{counts[:error] || 0} · Warnings: #{counts[:warning] || 0} · \
+    Other messages: #{counts[:writeln] || 0}
     """
   end
 

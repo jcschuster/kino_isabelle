@@ -3,15 +3,16 @@ defmodule KinoIsabelle.Positions do
   Maps Isabelle positions to offsets in the cell text.
 
   Isabelle reports `offset` and `end_offset` as 1-based symbol indices into the
-  whole theory file, `end_offset` exclusive. A symbol is a `\\<name>` sequence
-  or a single code point. Cell offsets are UTF-16 code units, as used by
+  whole theory file, `end_offset` exclusive. Symbols are delimited as by
+  Isabelle's `Symbol.Matcher`: `\\<name>` (also when malformed, e.g. `\\<abc`),
+  `\\r\\n`, or a single code point. Cell offsets are UTF-16 code units, as used by
   CodeMirror. Positions inside the prepended header map to 0, positions past
   the cell text (the appended `end`) map to the end of the text.
   """
 
   defstruct [:starts, :header]
 
-  @symbol ~r/\\<\^?[A-Za-z][A-Za-z0-9_']*>|./us
+  @symbol ~r/\r\n|\\<\^?(?:[A-Za-z][A-Za-z0-9_']*)?>?|./us
 
   @doc "Builds the table for `text`, preceded by `header_symbols` symbols on disk."
   def new(text, header_symbols) do
@@ -44,7 +45,7 @@ defmodule KinoIsabelle.Positions do
           from + 1
       end
 
-    {offset(table, from), offset(table, max(to, from + 1))}
+    {offset(table, from), offset(table, to)}
   end
 
   def range(%__MODULE__{}, _pos), do: {0, 0}

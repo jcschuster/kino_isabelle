@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild js/main.js --bundle --minify --format=esm --outdir=../lib/assets/cell/build",
+    "build": "node build.js",
     "test": "node --test test/"
   },
   "dependencies": {

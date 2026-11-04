@@ -8,6 +8,7 @@ defmodule KinoIsabelle.Cell do
   alias KinoIsabelle.Result
 
   @defaults %{
+    "variable" => "result",
     "text" => "",
     "session" => "HOL",
     "theory" => "Scratch",
@@ -17,7 +18,11 @@ defmodule KinoIsabelle.Cell do
 
   @impl true
   def init(attrs, ctx) do
-    fields = Map.merge(@defaults, Map.take(attrs, Map.keys(@defaults)))
+    fields =
+      @defaults
+      |> Map.merge(Map.take(attrs, Map.keys(@defaults)))
+      |> Map.put("variable", Kino.SmartCell.prefixed_var_name("result", attrs["variable"]))
+
     {:ok, assign(ctx, fields: fields, check: nil, result: nil)}
   end
 
@@ -67,18 +72,18 @@ defmodule KinoIsabelle.Cell do
   def to_attrs(ctx), do: ctx.assigns.fields
 
   @impl true
-  def to_source(%{"text" => text} = attrs) do
+  def to_source(%{"variable" => variable, "text" => text} = attrs) do
     options =
       Enum.map_join(options(attrs), ",\n    ", fn {key, value} -> "#{key}: #{inspect(value)}" end)
 
     """
-    {:ok, result} =
+    {:ok, #{variable}} =
       KinoIsabelle.check(
         #{literal(text)},
         #{options}
       )
 
-    result\
+    #{variable}\
     """
   end
 
@@ -89,13 +94,14 @@ defmodule KinoIsabelle.Cell do
     do: [session: attrs["session"], theory: attrs["theory"], imports: attrs["imports"]]
 
   # A ~S heredoc keeps backslashes (\<forall>) and #{ verbatim; it cannot hold
-  # a line starting with """.
+  # """ at a line start, and \""" is read as an escaped delimiter.
   defp literal(text) do
-    if Regex.match?(~r/^\s*"""/m, text) do
+    if String.contains?(text, ~s(""")) do
       inspect(text)
     else
       body =
         text
+        |> String.trim_trailing("\n")
         |> String.split("\n")
         |> Enum.map_join("\n", &if(&1 == "", do: "", else: "    " <> &1))
 
@@ -103,8 +109,26 @@ defmodule KinoIsabelle.Cell do
     end
   end
 
-  defp update_fields(ctx, fields),
-    do: assign(ctx, fields: Map.merge(ctx.assigns.fields, Map.take(fields, Map.keys(@defaults))))
+  defp update_fields(ctx, fields) do
+    fields = Map.take(fields, Map.keys(@defaults))
+
+    fields =
+      if Map.has_key?(fields, "variable") and not variable?(fields["variable"]) do
+        broadcast_event(ctx, "variable", %{variable: ctx.assigns.fields["variable"]})
+        Map.delete(fields, "variable")
+      else
+        fields
+      end
+
+    assign(ctx, fields: Map.merge(ctx.assigns.fields, fields))
+  end
+
+  # Kino's check also admits nil, true, false and names starting with _,
+  # which cannot be bound and returned.
+  defp variable?(name) do
+    Kino.SmartCell.valid_variable_name?(name) and name not in ~w(nil true false) and
+      not String.starts_with?(name, "_")
+  end
 
   defp show(ctx, reply) do
     payload = payload(reply)
@@ -119,6 +143,12 @@ defmodule KinoIsabelle.Cell do
 
   defp error(:isabelle_not_found), do: "isabelle executable not found (set ISABELLE_TOOL or PATH)"
   defp error(:missing_theory_header), do: "manual header mode needs a theory header"
+
+  defp error({:server_failed, status, output}),
+    do: "isabelle server exited with status #{status}:\n#{output}"
+
+  defp error({:server_timeout, output}),
+    do: "isabelle server did not start within a minute:\n#{output}"
 
   defp error({:session_start_failed, logic, messages}),
     do: Enum.join(["could not start session #{logic}" | messages], "\n")

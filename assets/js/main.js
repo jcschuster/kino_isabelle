@@ -69,6 +69,7 @@ const template = `
       </label>
       <label class="auto-only">Theory <input name="theory" size="12" /></label>
       <label class="auto-only">Imports <input name="imports" size="24" /></label>
+      <label>Assign to <input name="variable" size="10" /></label>
       <span class="status" data-status="idle">idle</span>
     </div>
     <div class="editor"></div>
@@ -80,8 +81,8 @@ export function init(ctx, { fields, checking, result }) {
   ctx.importCSS("main.css");
   ctx.root.innerHTML = template;
 
-  const root = ctx.root;
-  const input = (name) => root.querySelector(`[name="${name}"]`);
+  const root = ctx.root.querySelector(".isabelle-cell");
+  const input =(name) => root.querySelector(`[name="${name}"]`);
   const status = root.querySelector(".status");
   const panel = root.querySelector(".panel");
   const button = root.querySelector(".check");
@@ -126,6 +127,7 @@ export function init(ctx, { fields, checking, result }) {
   function collect() {
     return {
       text: view.state.doc.toString(),
+      variable: input("variable").value.trim(),
       session: input("session").value.trim(),
       theory: input("theory").value.trim(),
       imports: input("imports").value.split(/\s+/).filter((i) => i !== ""),
@@ -193,13 +195,14 @@ export function init(ctx, { fields, checking, result }) {
     return div;
   }
 
+  input("variable").value = fields.variable;
   input("session").value = fields.session;
   input("theory").value = fields.theory;
   input("imports").value = fields.imports.join(" ");
   input("header_mode").value = fields.header_mode;
   showHeaderMode();
 
-  for (const name of ["session", "theory", "imports", "header_mode"]) {
+  for (const name of ["variable", "session", "theory", "imports", "header_mode"]) {
     input(name).addEventListener("change", () => {
       showHeaderMode();
       sync();
@@ -215,6 +218,8 @@ export function init(ctx, { fields, checking, result }) {
   ctx.handleSync(sync);
   ctx.handleEvent("checking", () => setStatus("checking"));
   ctx.handleEvent("result", applyResult);
+  // Sent when the cell rejects the name typed into "Assign to".
+  ctx.handleEvent("variable", ({ variable }) => (input("variable").value = variable));
 
   renderPanel(view.state);
   if (result) applyResult(result);

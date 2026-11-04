@@ -3,7 +3,7 @@
 
 import { StreamLanguage, ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
-import keywords from "../../priv/keywords.json";
+import keywords from "../../priv/keywords.json" with { type: "json" };
 
 const commands = new Set(Object.keys(keywords.major));
 const minor = new Set(keywords.minor);
