@@ -1,0 +1,21 @@
+{
+  "name": "kino_isabelle_cell",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild js/main.js --bundle --minify --format=esm --outdir=../lib/assets/cell/build",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6",
+    "@codemirror/commands": "^6",
+    "@codemirror/language": "^6",
+    "@codemirror/lint": "^6",
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6",
+    "@lezer/highlight": "^1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28"
+  }
+}
