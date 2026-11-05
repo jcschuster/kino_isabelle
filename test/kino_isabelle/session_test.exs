@@ -1,6 +1,8 @@
 defmodule KinoIsabelle.SessionTest do
   use ExUnit.Case
 
+  import KinoIsabelle.TestHelpers
+
   @moduletag :tmp_dir
 
   setup %{tmp_dir: tmp_dir} do
@@ -17,6 +19,7 @@ defmodule KinoIsabelle.SessionTest do
         do: System.put_env("ISABELLE_TOOL", previous),
         else: System.delete_env("ISABELLE_TOOL")
 
+      Application.delete_env(:kino_isabelle, :server)
       restart_session()
     end)
   end
@@ -26,8 +29,19 @@ defmodule KinoIsabelle.SessionTest do
              {:error, {:server_failed, 2, "*** startup failure"}}
   end
 
-  defp restart_session do
-    :ok = Supervisor.terminate_child(KinoIsabelle.Application, KinoIsabelle.Session)
-    {:ok, _} = Supervisor.restart_child(KinoIsabelle.Application, KinoIsabelle.Session)
+  test "rejects a configured server without password" do
+    Application.put_env(:kino_isabelle, :server, port: 4711)
+    assert KinoIsabelle.check("lemma True by simp") == {:error, :bad_server_config}
+  end
+
+  test "reports a configured server that cannot be reached" do
+    {:ok, socket} = :gen_tcp.listen(0, [])
+    {:ok, port} = :inet.port(socket)
+    :gen_tcp.close(socket)
+
+    Application.put_env(:kino_isabelle, :server, port: port, password: "secret")
+
+    assert KinoIsabelle.check("lemma True by simp") ==
+             {:error, {:connect_failed, :econnrefused}}
   end
 end

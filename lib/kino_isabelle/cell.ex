@@ -144,6 +144,14 @@ defmodule KinoIsabelle.Cell do
   defp error(:isabelle_not_found), do: "isabelle executable not found (set ISABELLE_TOOL or PATH)"
   defp error(:missing_theory_header), do: "manual header mode needs a theory header"
 
+  defp error(:bad_server_config), do: "config :kino_isabelle, :server needs :port and :password"
+
+  # A wrong password shows as :closed: Isabelle drops the connection.
+  defp error({:connect_failed, reason}),
+    do:
+      "could not connect to the configured Isabelle server (check :host, :port, :password): " <>
+        inspect(reason)
+
   defp error({:server_failed, status, output}),
     do: "isabelle server exited with status #{status}:\n#{output}"
 

@@ -65,5 +65,40 @@ defmodule KinoIsabelleTest do
     assert Enum.any?(messages, &(&1.kind == :error and &1.from == 14))
   end
 
+  test "checks in a session started elsewhere on a configured server" do
+    name = "kino_isabelle_test_#{System.unique_integer([:positive])}"
+    {:ok, isabelle} = IsabelleClient.Server.executable()
+
+    port =
+      Port.open({:spawn_executable, isabelle}, [:binary, args: ["server", "-n", name, "-p", "0"]])
+
+    assert_receive {^port, {:data, data}}, 60_000
+    [info] = IsabelleClient.Server.parse_info(data)
+    on_exit(fn -> IsabelleClient.Server.kill(name) end)
+
+    {:ok, other} = IsabelleClient.Shared.start_link(port: info.port, password: info.password)
+    {:ok, task} = IsabelleClient.Shared.start_session(other, [session: "HOL"], :infinity)
+    IsabelleClient.Shared.close(other)
+
+    # "Elsewhere" is no logic: starting a session for it would fail.
+    Application.put_env(:kino_isabelle, :server,
+      port: info.port,
+      password: info.password,
+      sessions: %{"Elsewhere" => task.result["session_id"]}
+    )
+
+    on_exit(fn ->
+      Application.delete_env(:kino_isabelle, :server)
+      restart_session()
+    end)
+
+    restart_session()
+    assert {:ok, %{status: :ok}} = KinoIsabelle.check("lemma True by simp", session: "Elsewhere")
+
+    # The server outlives the runtime's connection.
+    restart_session()
+    assert {:ok, %{status: :ok}} = KinoIsabelle.check("lemma True by simp", session: "Elsewhere")
+  end
+
   defp errors(result), do: Enum.filter(result.messages, &(&1.kind == :error))
 end

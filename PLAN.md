@@ -115,6 +115,8 @@ Legend: `[x]` done and verified, `[~]` written but not verified, `[ ]` not start
 - [x] README.
 - [x] Packaging for 0.1.0-alpha.1: MIT license, Hex metadata, ExDoc (README, demo, changelog), bundled npm licenses in `lib/assets/cell/build/THIRD_PARTY_LICENSES.txt`. The built package was installed from its unpacked files and ran the demo. Not published.
 
+- [x] Running server (`config :kino_isabelle, :server`, with `:sessions` mapping logics to existing session ids). Isabelle sessions belong to the server, not the connection that started them, and outlive it (`server.scala`). Tested against a separate local server and with a session started from `isabelle server -c`. Not tested: a server on another machine (Isabelle binds 127.0.0.1; theory files must be visible under the same path).
+
 ### Deviations from the plan, to decide
 
 - [ ] Theory directory: all cells of a runtime share one directory (`$TMP/kino_isabelle_<os pid>`) so that cells can import each other, instead of one directory per cell. Two cells with the same theory name overwrite each other's file.

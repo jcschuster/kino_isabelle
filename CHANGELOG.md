@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-alpha.2
+
+- `config :kino_isabelle, :server` connects the runtime to a running Isabelle server instead of starting one; `:sessions` reuses logic sessions already running there.
+
 ## 0.1.0-alpha.1
 
 First pre-release.

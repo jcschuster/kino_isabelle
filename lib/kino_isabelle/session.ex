@@ -8,6 +8,10 @@ defmodule KinoIsabelle.Session do
   connection dies, this process exits and its supervisor restarts it, so the
   next check starts afresh.
 
+  With `config :kino_isabelle, :server` (see the README), the first check
+  connects to that server instead and checks in the session ids listed there.
+  Neither that server nor the logic sessions started on it are stopped.
+
   The last result per theory file is cached and returned while the source and
   logic session are unchanged.
   """
@@ -90,27 +94,49 @@ defmodule KinoIsabelle.Session do
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
   def handle_info({_port, :closed}, state), do: {:noreply, state}
 
-  defp ensure_session(%{sessions: sessions} = state, logic) when is_map_key(sessions, logic),
-    do: {:ok, state}
-
   defp ensure_session(state, logic) do
     with {:ok, state} <- ensure_client(state) do
-      case Shared.start_session(state.client, [session: logic], :infinity) do
-        {:ok, task} ->
-          {:ok, put_in(state.sessions[logic], task.result["session_id"])}
-
-        {:error, %IsabelleClient.Task{} = task} ->
-          {:error, {:session_start_failed, logic, IsabelleClient.Result.errors(task)}, state}
-
-        {:error, reason} ->
-          {:error, reason, state}
-      end
+      if Map.has_key?(state.sessions, logic), do: {:ok, state}, else: start_session(state, logic)
     end
   end
 
+  defp start_session(state, logic) do
+    case Shared.start_session(state.client, [session: logic], :infinity) do
+      {:ok, task} ->
+        {:ok, put_in(state.sessions[logic], task.result["session_id"])}
+
+      {:error, %IsabelleClient.Task{} = task} ->
+        {:error, {:session_start_failed, logic, IsabelleClient.Result.errors(task)}, state}
+
+      {:error, reason} ->
+        {:error, reason, state}
+    end
+  end
+
+  defp ensure_client(%{client: nil} = state) do
+    case Application.fetch_env(:kino_isabelle, :server) do
+      {:ok, server} -> connect(state, Map.new(server))
+      :error -> start_local(state)
+    end
+  end
+
+  defp ensure_client(state), do: {:ok, state}
+
+  # Without :password, Shared would start a server of its own.
+  defp connect(state, %{port: port, password: password} = server) do
+    opts = [host: Map.get(server, :host, "127.0.0.1"), port: port, password: password]
+
+    case Shared.start_link(opts) do
+      {:ok, client} -> {:ok, %{state | client: client, sessions: Map.get(server, :sessions, %{})}}
+      {:error, reason} -> {:error, {:connect_failed, reason}, state}
+    end
+  end
+
+  defp connect(state, _server), do: {:error, :bad_server_config, state}
+
   # The server name must be unique across VMs: `isabelle server -n` joins a
   # running server of the same name.
-  defp ensure_client(%{client: nil} = state) do
+  defp start_local(state) do
     name = "kino_isabelle_#{System.pid()}_#{System.unique_integer([:positive])}"
 
     with {:ok, isabelle} <- IsabelleClient.Server.executable() do
@@ -129,8 +155,6 @@ defmodule KinoIsabelle.Session do
       {:error, reason} -> {:error, reason, state}
     end
   end
-
-  defp ensure_client(state), do: {:ok, state}
 
   # Instead of IsabelleClient.Server.start/2, which drops the server's stderr
   # and raises when the server exits before it closes the port.

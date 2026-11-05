@@ -10,12 +10,12 @@ This is an alpha release: expect rough edges and breaking changes.
 
 ```elixir
 Mix.install([
-  {:kino_isabelle, "~> 0.1.0-alpha.1"}
+  {:kino_isabelle, "~> 0.1.0-alpha.2"}
 ])
 ```
 
 Isabelle must be installed, with `isabelle` on `PATH` or `ISABELLE_TOOL`
-pointing to it. Tested with Isabelle2025-2. A logic session without a built
+pointing to it, unless the runtime uses a [running server](#using-a-running-server). Tested with Isabelle2025-2. A logic session without a built
 heap is built on first use, which can take long. Server cleanup relies on
 `/bin/sh`, so Windows is not supported.
 
@@ -53,6 +53,44 @@ Without the smart cell:
 ```elixir
 {:ok, result} = KinoIsabelle.check(~S(lemma "\<forall>x. x = x" by simp), imports: ["Main"])
 ```
+
+## Using a running server
+
+Instead of starting a server of its own, a runtime can connect to one that is
+already running. Configure it before the first check, for example in the setup
+cell:
+
+```elixir
+Mix.install(
+  [{:kino_isabelle, "~> 0.1.0-alpha.2"}],
+  config: [kino_isabelle: [server: [port: 4711, password: "…"]]]
+)
+```
+
+`isabelle server` prints port and password when it starts
+(`server "isabelle" = 127.0.0.1:4711 (password "…")`), `isabelle server -l`
+lists the running servers. `:host` defaults to `"127.0.0.1"`. The setting is
+read at the first check, so `Application.put_env(:kino_isabelle, :server, …)`
+before that works as well.
+
+Logic sessions already running on the server are reused when their ids are
+given by logic name:
+
+```elixir
+server: [port: 4711, password: "…", sessions: %{"HOL" => "<session_id>"}]
+```
+
+Cells whose logic is `HOL` then check in that session; other logics are
+started on the server. A session id is what the server's `session_start`
+command returns, e.g. typed into the console of `isabelle server -c`:
+`session_start {"session": "HOL"}`.
+
+- Isabelle servers listen on 127.0.0.1 only and read the theory files from the
+  runtime's temporary directory (`kino_isabelle_<OS pid>` in
+  `System.tmp_dir!()`). The server must therefore run on the same machine, or
+  see that directory under the same path.
+- The server and the logic sessions the runtime started on it keep running when
+  the runtime stops.
 
 ## Development
 
