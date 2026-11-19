@@ -10,7 +10,10 @@ defmodule KinoIsabelle.Session do
 
   With `config :kino_isabelle, :server` (see the README), the first check
   connects to that server instead and checks in the session ids listed there.
-  Neither that server nor the logic sessions started on it are stopped.
+  Neither that server nor the logic sessions started on it are stopped. A
+  server given by `:url` cannot read the runtime's files, so theories are
+  uploaded to the logic session's directory on the server instead.
+  `KinoIsabelle.use_server/1` changes the setting and restarts this process.
 
   The last result per theory file is cached and returned while the source and
   logic session are unchanged.
@@ -25,6 +28,13 @@ defmodule KinoIsabelle.Session do
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
+  @doc "Restarts this process, dropping its server connection, logic sessions and cache."
+  def restart do
+    :ok = Supervisor.terminate_child(KinoIsabelle.Application, __MODULE__)
+    {:ok, _pid} = Supervisor.restart_child(KinoIsabelle.Application, __MODULE__)
+    :ok
+  end
+
   @doc """
   Writes and checks `theory` in the logic session `logic`.
 
@@ -38,17 +48,15 @@ defmodule KinoIsabelle.Session do
       {:cached, result} ->
         {:ok, result}
 
-      {:run, client, session_id} ->
-        Theory.write!(theory)
-
-        args = [
-          session_id: session_id,
-          theories: [theory.name],
-          master_dir: theory.dir,
-          unicode_symbols: true
-        ]
-
-        with {:ok, result} <- task_result(Shared.use_theories(client, args)) do
+      {:run, client, session_id, files} ->
+        with {:ok, master_dir} <- place(files, client, session_id, theory),
+             args = [
+               session_id: session_id,
+               theories: [theory.name],
+               master_dir: master_dir,
+               unicode_symbols: true
+             ],
+             {:ok, result} <- task_result(Shared.use_theories(client, args)) do
           GenServer.cast(__MODULE__, {:cache, key, theory.source, result})
           {:ok, result}
         end
@@ -58,6 +66,19 @@ defmodule KinoIsabelle.Session do
     end
   end
 
+  defp place(:local, _client, _session_id, theory) do
+    Theory.write!(theory)
+    {:ok, theory.dir}
+  end
+
+  defp place(:upload, client, session_id, theory) do
+    with {:ok, path} <-
+           Shared.write_file(client, Path.basename(theory.path), theory.source,
+             session_id: session_id
+           ),
+         do: {:ok, Path.dirname(path)}
+  end
+
   defp task_result({:ok, %IsabelleClient.Task{result: result}}), do: {:ok, result}
   defp task_result({:error, %IsabelleClient.Task{result: result}}), do: {:ok, result}
   defp task_result({:error, reason}), do: {:error, reason}
@@ -65,7 +86,7 @@ defmodule KinoIsabelle.Session do
   @impl true
   def init(nil) do
     Process.flag(:trap_exit, true)
-    {:ok, %{client: nil, sessions: %{}, cache: %{}}}
+    {:ok, %{client: nil, files: :local, sessions: %{}, cache: %{}}}
   end
 
   @impl true
@@ -76,8 +97,11 @@ defmodule KinoIsabelle.Session do
 
       _ ->
         case ensure_session(state, logic) do
-          {:ok, state} -> {:reply, {:run, state.client, state.sessions[logic]}, state}
-          {:error, reason, state} -> {:reply, {:error, reason}, state}
+          {:ok, state} ->
+            {:reply, {:run, state.client, state.sessions[logic], state.files}, state}
+
+          {:error, reason, state} ->
+            {:reply, {:error, reason}, state}
         end
     end
   end
@@ -114,25 +138,34 @@ defmodule KinoIsabelle.Session do
   end
 
   defp ensure_client(%{client: nil} = state) do
-    case Application.fetch_env(:kino_isabelle, :server) do
-      {:ok, server} -> connect(state, Map.new(server))
-      :error -> start_local(state)
+    case Application.get_env(:kino_isabelle, :server, :local) do
+      :local -> start_local(state)
+      server -> connect(state, Map.new(server))
     end
   end
 
   defp ensure_client(state), do: {:ok, state}
 
   # Without :password, Shared would start a server of its own.
+  defp connect(state, %{url: url, password: password} = server),
+    do: connect(state, server, [url: url, password: password], :upload)
+
   defp connect(state, %{port: port, password: password} = server) do
     opts = [host: Map.get(server, :host, "127.0.0.1"), port: port, password: password]
-
-    case Shared.start_link(opts) do
-      {:ok, client} -> {:ok, %{state | client: client, sessions: Map.get(server, :sessions, %{})}}
-      {:error, reason} -> {:error, {:connect_failed, reason}, state}
-    end
+    connect(state, server, opts, :local)
   end
 
   defp connect(state, _server), do: {:error, :bad_server_config, state}
+
+  defp connect(state, server, opts, files) do
+    case Shared.start_link(opts) do
+      {:ok, client} ->
+        {:ok, %{state | client: client, files: files, sessions: Map.get(server, :sessions, %{})}}
+
+      {:error, reason} ->
+        {:error, {:connect_failed, reason}, state}
+    end
+  end
 
   # The server name must be unique across VMs: `isabelle server -n` joins a
   # running server of the same name.

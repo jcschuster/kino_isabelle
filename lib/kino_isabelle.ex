@@ -29,4 +29,26 @@ defmodule KinoIsabelle do
       {:ok, Output.result(theory, raw)}
     end
   end
+
+  @doc """
+  Sets the Isabelle server that checks run on.
+
+  `:local`, the default, starts a server on the first check. A keyword list
+  connects to a running server; its keys are those of
+  `config :kino_isabelle, :server` (see the README): `:password`, either
+  `:url` or `:port` and `:host`, and `:sessions`.
+
+  A setting other than the current one restarts `KinoIsabelle.Session`: the
+  runtime drops its connection and logic sessions, a local server is stopped,
+  and the next check uses the new setting.
+  """
+  @spec use_server(:local | keyword()) :: :ok
+  def use_server(server) do
+    if server != Application.get_env(:kino_isabelle, :server, :local) do
+      Application.put_env(:kino_isabelle, :server, server)
+      Session.restart()
+    end
+
+    :ok
+  end
 end

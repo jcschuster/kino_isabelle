@@ -1,0 +1,29 @@
+.isabelle-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  background: #f8fafc;
+  border: 1px solid #e1e8f0;
+  border-radius: 8px;
+}
+
+.isabelle-config[data-server="local"] .remote,
+.isabelle-config:not([data-server="host"]) .host,
+.isabelle-config:not([data-server="url"]) .url {
+  display: none;
+}
+
+.isabelle-config input,
+.isabelle-config select,
+.isabelle-config button {
+  font: inherit;
+  padding: 2px 4px;
+}
+
+.isabelle-config input[type="number"] {
+  width: 6em;
+}

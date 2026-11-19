@@ -28,6 +28,7 @@ Hex package `kino_isabelle`, module namespace `KinoIsabelle`. Standalone package
 ### Elixir
 
 - `KinoIsabelle.Cell` — `Kino.SmartCell` + `Kino.JS.Live`. Owns attrs, handles editor events, triggers checks, broadcasts results to the editor, emits the generated source.
+- `KinoIsabelle.ConfigCell` — "Isabelle server" smart cell; its source calls `KinoIsabelle.use_server/1`.
 - `KinoIsabelle.Session` — supervised process wrapping `IsabelleClient.Shared`. Starts the server and the configured logic session on first use, keeps them for the runtime's lifetime, restarts on failure. One per runtime, registered by name.
 - `KinoIsabelle.Theory` — turns cell text into a theory file on disk: temp directory per cell, theory name and imports from attrs or from the user's own header. Records how many header lines were prepended so positions can be shifted back.
 - `KinoIsabelle.Positions` — converts Isabelle positions (`line`, `offset`, `end_offset`, symbol-based) to character offsets in the cell text, accounting for prepended header lines and the symbol encoding of the text on disk.
@@ -116,6 +117,8 @@ Legend: `[x]` done and verified, `[~]` written but not verified, `[ ]` not start
 - [x] Packaging for 0.1.0-alpha.1: MIT license, Hex metadata, ExDoc (README, demo, changelog), bundled npm licenses in `lib/assets/cell/build/THIRD_PARTY_LICENSES.txt`. The built package was installed from its unpacked files and ran the demo. Not published.
 
 - [x] Running server (`config :kino_isabelle, :server`, with `:sessions` mapping logics to existing session ids). Isabelle sessions belong to the server, not the connection that started them, and outlive it (`server.scala`). Tested against a separate local server and with a session started from `isabelle server -c`. Not tested: a server on another machine (Isabelle binds 127.0.0.1; theory files must be visible under the same path).
+- [~] BYOM servers (`:url`, `wss://…`): connection through `isabelle_elixir`'s WebSocket transport, theories uploaded with `Shared.write_file/4` (`byom_write_file`) into the logic session's directory on the server. Needs `isabelle_elixir` from GitHub (commit 1e18525) until a release has it; Hex rejects git dependencies, so kino_isabelle cannot be published meanwhile. Only a bad URL is tested; `test/kino_isabelle/byom_test.exs` runs against a deployment given by `ISABELLE_BYOM_URL`/`_PASSWORD`, not run yet.
+- [~] "Isabelle server" smart cell (`KinoIsabelle.ConfigCell`): local server or running one (host and port, or URL; password as Livebook secret name; sessions); source calls `KinoIsabelle.use_server/1`, which restarts `Session` when the setting changes. Cell process and source tested with `Kino.Test`, switching from a local to a running server in the integration test. Not checked: the form in a browser or Livebook (secret dialog, layout), `build.js` itself (bundle built with the esbuild binary, no node in the container).
 
 ### Deviations from the plan, to decide
 

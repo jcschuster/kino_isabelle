@@ -8,13 +8,13 @@ defmodule KinoIsabelle.TestHelpers do
     |> binary_part(from * 2, (to - from) * 2)
     |> :unicode.characters_to_binary(:utf16, :utf8)
   end
-
-  def restart_session do
-    :ok = Supervisor.terminate_child(KinoIsabelle.Application, KinoIsabelle.Session)
-    {:ok, _} = Supervisor.restart_child(KinoIsabelle.Application, KinoIsabelle.Session)
-  end
 end
 
-# Integration tests run against a local Isabelle when one is found.
-isabelle? = match?({:ok, _}, IsabelleClient.Server.executable())
-ExUnit.start(exclude: if(isabelle?, do: [], else: [:isabelle]))
+# Integration tests run against a local Isabelle when one is found, and against
+# an Isabelle BYOM deployment when ISABELLE_BYOM_URL and _PASSWORD are set.
+available = [
+  isabelle: match?({:ok, _}, IsabelleClient.Server.executable()),
+  byom: System.get_env("ISABELLE_BYOM_URL") != nil
+]
+
+ExUnit.start(exclude: for({tag, false} <- available, do: tag))

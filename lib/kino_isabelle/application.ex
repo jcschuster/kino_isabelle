@@ -6,6 +6,7 @@ defmodule KinoIsabelle.Application do
   @impl true
   def start(_type, _args) do
     Kino.SmartCell.register(KinoIsabelle.Cell)
+    Kino.SmartCell.register(KinoIsabelle.ConfigCell)
     children = [{Task.Supervisor, name: KinoIsabelle.TaskSupervisor}, KinoIsabelle.Session]
     Supervisor.start_link(children, strategy: :one_for_one, name: __MODULE__)
   end

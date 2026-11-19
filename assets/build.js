@@ -1,16 +1,13 @@
 import { build } from "esbuild";
 import { readFileSync, writeFileSync } from "node:fs";
 
-const outdir = "../lib/assets/cell/build";
+const options = { bundle: true, minify: true, format: "esm", metafile: true };
 
-const { metafile } = await build({
-  entryPoints: ["js/main.js"],
-  bundle: true,
-  minify: true,
-  format: "esm",
-  outdir,
-  metafile: true,
-});
+// Imports no packages, so it needs no license notices.
+await build({ ...options, entryPoints: { main: "js/config.js" }, outdir: "../lib/assets/config/build" });
+
+const outdir = "../lib/assets/cell/build";
+const { metafile } = await build({ ...options, entryPoints: ["js/main.js"], outdir });
 
 // The bundle contains these packages, so their licenses ship with it.
 const packages = new Set(

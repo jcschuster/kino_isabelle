@@ -28,7 +28,8 @@ defmodule KinoIsabelle.MixProject do
   defp deps do
     [
       {:kino, "~> 0.19"},
-      {:isabelle_elixir, "~> 0.4"},
+      {:isabelle_elixir,
+       github: "davfuenmayor/isabelle_elixir", ref: "1e18525dfafb5eb849d962ad84b622073e0ab881"},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
   end
@@ -42,6 +43,7 @@ defmodule KinoIsabelle.MixProject do
         "lib/kino_isabelle.ex",
         "lib/kino_isabelle",
         "lib/assets/cell/build",
+        "lib/assets/config/build",
         "priv",
         "mix.exs",
         ".formatter.exs",

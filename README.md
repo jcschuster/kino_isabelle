@@ -57,8 +57,16 @@ Without the smart cell:
 ## Using a running server
 
 Instead of starting a server of its own, a runtime can connect to one that is
-already running. Configure it before the first check, for example in the setup
-cell:
+already running. The **Isabelle server** smart cell sets this up: pick
+"connect by host and port" or "connect by URL", and enter the address, the
+Livebook secret that holds the password and, optionally, logic sessions to
+reuse (as `HOL=<session_id>` pairs separated by spaces). Its source calls
+`KinoIsabelle.use_server/1`, which applies the setting also after checks: when
+it changes, the runtime drops its connection and stops a server it started, and
+the next check uses the new setting. Put the cell before the theory cells.
+
+Without the smart cell, configure the server before the first check, for
+example in the setup cell:
 
 ```elixir
 Mix.install(
@@ -85,19 +93,30 @@ started on the server. A session id is what the server's `session_start`
 command returns, e.g. typed into the console of `isabelle server -c`:
 `session_start {"session": "HOL"}`.
 
+A server deployed with [Isabelle BYOM](https://github.com/davfuenmayor/isabelle-byom)
+is given by its URL instead of host and port:
+
+```elixir
+server: [url: "wss://…/isabelle", password: "…"]
+```
+
 - Isabelle servers listen on 127.0.0.1 only and read the theory files from the
   runtime's temporary directory (`kino_isabelle_<OS pid>` in
-  `System.tmp_dir!()`). The server must therefore run on the same machine, or
-  see that directory under the same path.
+  `System.tmp_dir!()`). A server given by host and port must therefore run on
+  the same machine, or see that directory under the same path. To a server
+  given by URL, theories are uploaded into the directory of their logic
+  session there, so a cell can import the theories of cells checked before in
+  the same logic session.
 - The server and the logic sessions the runtime started on it keep running when
   the runtime stops.
 
 ## Development
 
 ```sh
-mix test                          # includes Isabelle integration tests when isabelle is found
+mix test                          # includes Isabelle integration tests when isabelle is found, and
+                                  # BYOM tests when ISABELLE_BYOM_URL and _PASSWORD are set
 cd assets && npm install && npm test
-npm run build                     # rebuilds lib/assets/cell/build (committed), including
+npm run build                     # rebuilds lib/assets/{cell,config}/build (committed), including
                                   # THIRD_PARTY_LICENSES.txt for the bundled npm packages
 mix kino_isabelle.gen_syntax HOL  # regenerates priv/keywords.json and priv/symbols.json
 ```

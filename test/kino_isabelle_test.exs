@@ -80,23 +80,22 @@ defmodule KinoIsabelleTest do
     {:ok, task} = IsabelleClient.Shared.start_session(other, [session: "HOL"], :infinity)
     IsabelleClient.Shared.close(other)
 
+    on_exit(fn -> KinoIsabelle.use_server(:local) end)
+
+    # Connected to the runtime's own server, which use_server/1 drops.
+    assert {:ok, %{status: :ok}} = KinoIsabelle.check("lemma True by simp")
+
     # "Elsewhere" is no logic: starting a session for it would fail.
-    Application.put_env(:kino_isabelle, :server,
+    KinoIsabelle.use_server(
       port: info.port,
       password: info.password,
       sessions: %{"Elsewhere" => task.result["session_id"]}
     )
 
-    on_exit(fn ->
-      Application.delete_env(:kino_isabelle, :server)
-      restart_session()
-    end)
-
-    restart_session()
     assert {:ok, %{status: :ok}} = KinoIsabelle.check("lemma True by simp", session: "Elsewhere")
 
     # The server outlives the runtime's connection.
-    restart_session()
+    KinoIsabelle.Session.restart()
     assert {:ok, %{status: :ok}} = KinoIsabelle.check("lemma True by simp", session: "Elsewhere")
   end
 
